@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0b0d12;
+  --color-surface: #11141c;
+  --color-line: #232838;
+  --color-accent: #f5a524;
+  --color-accent-soft: #7a5410;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(900px 500px at 50% -10%, #1b2030 0%, transparent 70%),
+    var(--color-ink);
+  color: #e8eaf0;
+  min-height: 100dvh;
+}
+
+/* The bracket view is wide by nature; let it scroll on its own rather than
+   forcing the whole page sideways on a phone. */
+.bracket-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
