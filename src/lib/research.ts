@@ -46,6 +46,25 @@ export interface ResearchResult {
   notes: string;
 }
 
+/**
+ * Stages of a research run, reported as the work actually reaches them.
+ *
+ * These are real transitions, not a timer: "searching" only happens when web
+ * search is on, and "ranking" begins when the second call is dispatched. The
+ * UI can show honest progress rather than a bar that fills on a guess.
+ */
+export type ResearchStage = "searching" | "ranking" | "finishing";
+
+export interface ResearchProgress {
+  stage: ResearchStage;
+  /** How many stages this particular run will pass through. */
+  totalStages: number;
+  /** 1-based position of this stage within the run. */
+  stageNumber: number;
+}
+
+export type ProgressCallback = (progress: ResearchProgress) => void;
+
 export class ResearchError extends Error {}
 
 function client(): Anthropic {
@@ -174,16 +193,27 @@ Rules:
 export async function researchCandidates(
   category: string,
   count: number,
+  onProgress?: ProgressCallback,
 ): Promise<ResearchResult> {
   const anthropic = client();
   const useSearch = webSearchEnabled();
 
+  // A run without web search skips the first call entirely, so the stage count
+  // differs - the UI is told which shape this run has rather than assuming.
+  const totalStages = useSearch ? 3 : 2;
+  let stageNumber = 0;
+  const report = (stage: ResearchStage) =>
+    onProgress?.({ stage, totalStages, stageNumber: ++stageNumber });
+
   let notes = "";
   if (useSearch) {
+    report("searching");
     notes = await gatherNotes(anthropic, category, count);
   }
 
+  report("ranking");
   const candidates = await structure(anthropic, category, count, notes);
+  report("finishing");
   const deduped = dedupe(candidates);
 
   if (deduped.length < count) {

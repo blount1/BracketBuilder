@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge, Card, PageHeader, SeedChip } from "@/components/ui";
 import { CandidateEditor } from "@/components/CandidateEditor";
+import { ResearchProgress, type ResearchState } from "@/components/ResearchProgress";
 import { MatchupRow } from "@/components/MatchupRow";
 import type { BracketView, CandidateView, TurnoutView } from "@/lib/view";
 
@@ -30,6 +31,7 @@ export function AdminConsole({
   const [notice, setNotice] = useState<string | null>(null);
   const [invites, setInvites] = useState<Invite[] | null>(null);
   const [inviteCount, setInviteCount] = useState(8);
+  const [research_, setResearch] = useState<ResearchState | null>(null);
 
   async function call(action: string, path: string, init?: RequestInit) {
     setBusy(action);
@@ -51,17 +53,72 @@ export function AdminConsole({
     }
   }
 
+  /**
+   * Research streams newline-delimited JSON so the stages can be shown as they
+   * happen. Errors arrive as an event rather than a status code, because the
+   * response has already begun by the time the work can fail.
+   */
   async function research() {
-    const data = await call("research", `/api/brackets/${bracket.id}/research`, {
-      method: "POST",
-    });
-    if (data) {
+    setBusy("research");
+    setError(null);
+    setNotice(null);
+    setResearch(null);
+    const startedAt = Date.now();
+
+    try {
+      const response = await fetch(`/api/brackets/${bracket.id}/research`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!response.ok || !response.body) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error ?? "Research could not be started.");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let done: { usedWebSearch: boolean; count: number } | null = null;
+
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+
+        // Events are newline-delimited; the trailing partial line stays in the
+        // buffer until the rest of it arrives.
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line);
+          if (event.type === "progress") {
+            setResearch({
+              stage: event.stage,
+              stageNumber: event.stageNumber,
+              totalStages: event.totalStages,
+              startedAt,
+            });
+          } else if (event.type === "error") {
+            throw new Error(event.error);
+          } else if (event.type === "done") {
+            done = event;
+          }
+        }
+      }
+
+      if (!done) throw new Error("Research ended early. Try again.");
       setNotice(
-        data.usedWebSearch
-          ? "Researched with live web search and seeded by predicted strength."
-          : "Seeded from the model's own knowledge (web search was off or returned nothing).",
+        done.usedWebSearch
+          ? `Researched ${done.count} contenders with live web search, seeded by predicted strength.`
+          : `Seeded ${done.count} contenders from the model's own knowledge (web search is off).`,
       );
       router.refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Research failed.");
+    } finally {
+      setBusy(null);
+      setResearch(null);
     }
   }
 
@@ -142,6 +199,7 @@ export function AdminConsole({
           onResearch={research}
           onStart={start}
           onSaved={() => router.refresh()}
+          research={research_}
         />
       ) : null}
 
@@ -272,6 +330,7 @@ function DraftStage({
   onResearch,
   onStart,
   onSaved,
+  research,
 }: {
   bracket: BracketView;
   hasApiKey: boolean;
@@ -279,6 +338,7 @@ function DraftStage({
   onResearch: () => void;
   onStart: () => void;
   onSaved: () => void;
+  research: ResearchState | null;
 }) {
   const ready = bracket.candidates.length > bracket.size / 2;
   return (
@@ -313,6 +373,8 @@ function DraftStage({
           </button>
         </div>
       </div>
+
+      {research ? <ResearchProgress state={research} /> : null}
 
       {!hasApiKey ? (
         <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
