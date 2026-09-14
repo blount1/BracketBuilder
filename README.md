@@ -77,18 +77,25 @@ through researching candidates, inviting voters, and running the rounds.
 | --- | --- | --- |
 | `DATABASE_URL` | yes | Postgres connection string. |
 | `ANTHROPIC_API_KEY` | for research | Used to research and seed candidates. Without it you can still enter candidates by hand. |
-| `RESEARCH_WEB_SEARCH` | no | `false` skips live web search and relies on the model's own knowledge — cheaper and faster, less current. Defaults to on. |
+| `RESEARCH_WEB_SEARCH` | no | `true` researches with live web search. Off by default — see below. |
 | `APP_URL` | no | Forces the origin used in invite links. Leave unset on a normal deploy — the app reads the real host from the request. |
 
 Research uses `claude-opus-5` in two stages: a web-search pass that gathers
 evidence about the category, then a schema-constrained pass that turns those
 notes into a ranked list.
 
-Cost lands around 25-50 cents per bracket created (not per vote) with web search
-on, since up to eight searches' worth of results pass through the context
-window. Setting `RESEARCH_WEB_SEARCH=false` drops that to a few cents by relying
-on the model's own knowledge instead. Note that API credits are billed
-separately from any Claude subscription.
+**Web search is off by default.** Measured on this app, research takes about 30
+seconds without it and about 170 seconds with it. Entry-level serverless plans
+cut a request off well before three minutes, so a search-by-default deploy fails
+in production while working fine locally. Search also costs roughly ten times as
+much — call it 25-50 cents per bracket created versus a few cents — and for
+categories that aren't time-sensitive it doesn't produce a better field.
+
+Set `RESEARCH_WEB_SEARCH=true` when the category genuinely needs current
+evidence and your host allows a request that long. The research route asks for
+up to 300 seconds; hosts clamp that to whatever the plan permits.
+
+API credits are billed separately from any Claude subscription.
 
 ## Running a bracket
 

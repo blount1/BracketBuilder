@@ -8,6 +8,13 @@ import { ServiceError } from "@/lib/service";
 type Params = { params: Promise<{ id: string }> };
 
 /**
+ * Research is slow - tens of seconds without web search, longer with it - and
+ * serverless platforms cut a request off at a per-plan ceiling. Ask for the
+ * headroom explicitly; hosts clamp this down to whatever the plan allows.
+ */
+export const maxDuration = 300;
+
+/**
  * Research the category and replace the draft's candidate list, seeded in the
  * order the research returned.
  */
