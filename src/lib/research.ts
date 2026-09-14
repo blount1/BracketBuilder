@@ -57,7 +57,18 @@ function client(): Anthropic {
   return new Anthropic();
 }
 
-const webSearchEnabled = () => process.env.RESEARCH_WEB_SEARCH !== "false";
+/**
+ * Web search is opt-in, not opt-out.
+ *
+ * Measured on this app: research takes ~30s without search and ~170s with it.
+ * Serverless hosts cut a request off well before three minutes on entry-level
+ * plans, so a search-by-default deploy fails in production while working
+ * locally. Search also costs roughly ten times as much per bracket, and for
+ * categories that aren't time-sensitive it doesn't improve the field. Turn it
+ * on with RESEARCH_WEB_SEARCH=true when the category needs current evidence
+ * and the host allows a long enough request.
+ */
+const webSearchEnabled = () => process.env.RESEARCH_WEB_SEARCH === "true";
 
 /** Stage 1: gather evidence about the category. */
 async function gatherNotes(
