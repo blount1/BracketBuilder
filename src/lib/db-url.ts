@@ -1,11 +1,17 @@
 /**
  * Where the Postgres connection string comes from.
  *
- * Hosting platforms name these variables however they like: a Vercel storage
- * integration prefixes them with whatever it was configured with (STORAGE_URL
- * by default, DATABASE_URL only if you say so), while other setups use
- * POSTGRES_URL or a plain DATABASE_URL. Rather than demand one spelling, look
- * for any of the ones actually in use.
+ * Hosting platforms name these variables however they like. A Vercel storage
+ * integration prefixes every variable it publishes with a configurable string -
+ * often the project name - so a correctly attached database can appear as
+ * `bracketbuilder_DATABASE_URL` rather than `DATABASE_URL`. Others use
+ * POSTGRES_URL, STORAGE_URL, or a plain DATABASE_URL.
+ *
+ * So rather than demand one spelling: check the well-known names, then accept
+ * any variable whose name *ends* with one of them. A candidate only counts if
+ * its value actually looks like a Postgres URL, which keeps unrelated variables
+ * (a NEON_AUTH_URL pointing at an https endpoint, say) from being mistaken for
+ * a database.
  *
  * Two different URLs matter:
  *
@@ -15,43 +21,57 @@
  *     pooler fails, because the pooler multiplexes sessions and schema changes
  *     need one to themselves.
  *
- * Providers that offer both publish the direct one under a second name. Where
- * only one URL exists (a plain local Postgres) both resolve to it.
+ * Where only one URL exists (a plain local Postgres) both resolve to it.
  */
 
-const POOLED_VARS = [
+const POOLED_NAMES = [
   "DATABASE_URL",
   "POSTGRES_URL",
   "STORAGE_URL",
   "POSTGRES_PRISMA_URL",
 ] as const;
 
-const DIRECT_VARS = [
+const DIRECT_NAMES = [
   "DIRECT_URL",
   "DATABASE_URL_UNPOOLED",
   "POSTGRES_URL_NON_POOLING",
   "STORAGE_URL_UNPOOLED",
 ] as const;
 
-function firstSet(names: readonly string[]): string | undefined {
+/** A blank variable is worse than a missing one - it looks configured. */
+function usable(value: string | undefined): value is string {
+  if (!value) return false;
+  const trimmed = value.trim();
+  // Only a real Postgres URL qualifies, so a prefixed-name sweep can't pick up
+  // some unrelated URL that happens to sit next to the database variables.
+  return /^postgres(ql)?:\/\//i.test(trimmed);
+}
+
+function resolve(names: readonly string[]): string | undefined {
+  // Exact names win, so an explicitly set variable always beats a guess.
   for (const name of names) {
     const value = process.env[name];
-    // An empty variable is worse than a missing one: it looks configured and
-    // silently is not. Treat blank as absent so the next candidate wins.
-    if (value && value.trim().length > 0) return value.trim();
+    if (usable(value)) return value.trim();
+  }
+  // Then any prefixed variant, e.g. bracketbuilder_DATABASE_URL.
+  for (const name of names) {
+    const suffix = `_${name}`;
+    for (const [key, value] of Object.entries(process.env)) {
+      if (key.endsWith(suffix) && usable(value)) return value.trim();
+    }
   }
   return undefined;
 }
 
 /** Connection string for serving requests. Prefers a pooled URL. */
 export function pooledDatabaseUrl(): string | undefined {
-  return firstSet(POOLED_VARS) ?? firstSet(DIRECT_VARS);
+  return resolve(POOLED_NAMES) ?? resolve(DIRECT_NAMES);
 }
 
 /** Connection string for schema changes. Prefers a direct, unpooled URL. */
 export function directDatabaseUrl(): string | undefined {
-  return firstSet(DIRECT_VARS) ?? firstSet(POOLED_VARS);
+  return resolve(DIRECT_NAMES) ?? resolve(POOLED_NAMES);
 }
 
 /** Names checked, for error messages that tell you what to actually set. */
-export const CANDIDATE_VARS = [...POOLED_VARS, ...DIRECT_VARS];
+export const CANDIDATE_VARS = [...POOLED_NAMES, ...DIRECT_NAMES];
