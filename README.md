@@ -60,10 +60,13 @@ Requires Node 20+ and a Postgres database.
 
 ```bash
 npm install
-cp .env.example .env      # then fill in DATABASE_URL and ANTHROPIC_API_KEY
+cp .env.example .env      # DATABASE_URL is required; ANTHROPIC_API_KEY is optional
 npm run db:push           # create the tables
 npm run dev
 ```
+
+Without `ANTHROPIC_API_KEY` the app still works — the admin console lets you type
+the field in by hand, one contender per line.
 
 Open http://localhost:3000, create a bracket, and the admin console walks you
 through researching candidates, inviting voters, and running the rounds.
@@ -79,7 +82,13 @@ through researching candidates, inviting voters, and running the rounds.
 
 Research uses `claude-opus-5` in two stages: a web-search pass that gathers
 evidence about the category, then a schema-constrained pass that turns those
-notes into a ranked list. Expect a few cents per bracket.
+notes into a ranked list.
+
+Cost lands around 25-50 cents per bracket created (not per vote) with web search
+on, since up to eight searches' worth of results pass through the context
+window. Setting `RESEARCH_WEB_SEARCH=false` drops that to a few cents by relying
+on the model's own knowledge instead. Note that API credits are billed
+separately from any Claude subscription.
 
 ## Running a bracket
 
@@ -107,10 +116,15 @@ It deletes all brackets in the target database between tests — point
 
 ## Deploying
 
-Any host that runs Next.js server-side works. On Vercel, add the environment
-variables above and point `DATABASE_URL` at a hosted Postgres (Neon, Supabase);
-`npm run build` runs `prisma generate` for you. Run `npm run db:push` once
-against the production database to create the tables.
+Any host that runs Next.js server-side works. On Vercel, import the repo and
+attach a Postgres database (Neon, Supabase) so `DATABASE_URL` is set — that is
+the only required variable. `npm run build` runs `prisma generate` and
+`prisma db push`, so the deploy creates its own tables; there is no separate
+setup step. `ANTHROPIC_API_KEY` can be added later to turn research on.
+
+Because the build pushes the schema, a deploy whose schema change would drop
+data fails rather than dropping it. Use a real migration (`prisma migrate`) once
+you have brackets worth keeping.
 
 ## Layout
 
