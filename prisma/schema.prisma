@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BracketStatus {
+  DRAFT // candidates being researched / edited, bracket not built yet
+  ACTIVE // bracket built, rounds being voted on
+  COMPLETE // a champion has been decided
+}
+
+enum MatchupStatus {
+  PENDING // waiting on earlier rounds to fill both slots
+  OPEN // accepting votes
+  DECIDED // winner resolved and advanced
+}
+
+model Bracket {
+  id           String        @id @default(cuid())
+  title        String
+  category     String
+  size         Int // 16, 32, 64 or 128
+  status       BracketStatus @default(DRAFT)
+  currentRound Int           @default(0) // 0 until the bracket is built
+  adminToken   String        @unique
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  candidates Candidate[]
+  matchups   Matchup[]
+  voters     Voter[]
+
+  @@index([createdAt])
+}
+
+model Candidate {
+  id        String  @id @default(cuid())
+  bracketId String
+  name      String
+  seed      Int // 1 = strongest predicted
+  blurb     String? // one-line description shown on the ballot
+  rationale String? // why the researcher ranked it here
+
+  bracket     Bracket   @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  asSideA     Matchup[] @relation("MatchupCandidateA")
+  asSideB     Matchup[] @relation("MatchupCandidateB")
+  asWinner    Matchup[] @relation("MatchupWinner")
+  votes       Vote[]
+
+  @@unique([bracketId, seed])
+  @@index([bracketId])
+}
+
+model Matchup {
+  id        String        @id @default(cuid())
+  bracketId String
+  round     Int // 1-indexed; round 1 is the opening round
+  slot      Int // 0-indexed position within the round
+  status    MatchupStatus @default(PENDING)
+
+  candidateAId String?
+  candidateBId String?
+  winnerId     String?
+
+  // Commit-reveal coin flip. flipSeed is generated when the matchup is created
+  // and only revealed once the matchup is decided, so the result of a tie-break
+  // is fixed before any vote is cast and verifiable afterwards.
+  flipSeed      String
+  flipCommit    String
+  decidedByFlip Boolean @default(false)
+
+  openedAt DateTime?
+  closedAt DateTime?
+
+  bracket    Bracket    @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  candidateA Candidate? @relation("MatchupCandidateA", fields: [candidateAId], references: [id], onDelete: SetNull)
+  candidateB Candidate? @relation("MatchupCandidateB", fields: [candidateBId], references: [id], onDelete: SetNull)
+  winner     Candidate? @relation("MatchupWinner", fields: [winnerId], references: [id], onDelete: SetNull)
+  votes      Vote[]
+
+  @@unique([bracketId, round, slot])
+  @@index([bracketId, round])
+}
+
+model Voter {
+  id        String   @id @default(cuid())
+  bracketId String
+  label     String // display name, e.g. "Voter 3" or a name the admin typed
+  token     String   @unique // the secret in the invite link
+  claimedAt DateTime?
+  createdAt DateTime @default(now())
+
+  bracket Bracket @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+  votes   Vote[]
+
+  @@index([bracketId])
+}
+
+model Vote {
+  id          String   @id @default(cuid())
+  matchupId   String
+  voterId     String
+  candidateId String
+  createdAt   DateTime @default(now())
+
+  matchup   Matchup   @relation(fields: [matchupId], references: [id], onDelete: Cascade)
+  voter     Voter     @relation(fields: [voterId], references: [id], onDelete: Cascade)
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  // One vote per person per matchup, enforced by the database rather than by
+  // application logic, so a double-submit cannot create a second ballot.
+  @@unique([matchupId, voterId])
+  @@index([matchupId])
+}
