@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && prisma db push && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
@@ -15,7 +15,8 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
     "test:unit": "vitest run src/lib/__tests__/bracket.test.ts",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:local": "prisma generate && next build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

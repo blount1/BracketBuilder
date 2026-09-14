@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge, Card, PageHeader, SeedChip } from "@/components/ui";
+import { CandidateEditor } from "@/components/CandidateEditor";
 import { MatchupRow } from "@/components/MatchupRow";
 import type { BracketView, CandidateView, TurnoutView } from "@/lib/view";
 
@@ -140,6 +141,7 @@ export function AdminConsole({
           busy={busy}
           onResearch={research}
           onStart={start}
+          onSaved={() => router.refresh()}
         />
       ) : null}
 
@@ -269,12 +271,14 @@ function DraftStage({
   busy,
   onResearch,
   onStart,
+  onSaved,
 }: {
   bracket: BracketView;
   hasApiKey: boolean;
   busy: string | null;
   onResearch: () => void;
   onStart: () => void;
+  onSaved: () => void;
 }) {
   const ready = bracket.candidates.length > bracket.size / 2;
   return (
@@ -283,9 +287,9 @@ function DraftStage({
         <div>
           <h2 className="text-lg font-semibold">Seed the field</h2>
           <p className="mt-1 max-w-xl text-sm text-white/55">
-            Claude researches “{bracket.category}”, ranks the contenders by how
-            likely they are to win a popular vote, and seeds them so the favorites
-            open against the weakest of the field.
+            Have Claude research “{bracket.category}” and rank the contenders, or
+            type your own list below. Either way the order is the seeding, so the
+            favorites open against the weakest of the field.
           </p>
         </div>
         <div className="flex gap-2">
@@ -312,8 +316,9 @@ function DraftStage({
 
       {!hasApiKey ? (
         <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-          Set <code className="font-mono">ANTHROPIC_API_KEY</code> in your
-          environment to research candidates automatically.
+          No <code className="font-mono">ANTHROPIC_API_KEY</code> is set, so
+          automatic research is off — enter the field by hand below. Add the key
+          later to turn research on.
         </p>
       ) : null}
 
@@ -333,11 +338,14 @@ function DraftStage({
             ))}
           </ol>
         </>
-      ) : (
-        <p className="mt-5 rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-white/40">
-          No candidates yet. Run the research to fill the bracket.
-        </p>
-      )}
+      ) : null}
+
+      <CandidateEditor
+        bracketId={bracket.id}
+        size={bracket.size}
+        initial={bracket.candidates}
+        onSaved={onSaved}
+      />
     </Card>
   );
 }

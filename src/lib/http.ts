@@ -36,7 +36,25 @@ export async function readJson<T>(request: Request): Promise<T> {
 
 /** Absolute origin for building shareable links. */
 export function appUrl(request: Request): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  // Deliberately not a NEXT_PUBLIC_ variable: those are inlined at build time,
+  // so one set after deploy would be silently ignored. This is server-only and
+  // read at request time.
+  const configured = process.env.APP_URL;
   if (configured) return configured.replace(/\/$/, "");
+
+  // Behind a proxy (Vercel, a load balancer) request.url can carry an internal
+  // address. The forwarded headers carry the host the browser actually used,
+  // which is the one an invite link has to point at.
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  if (host) {
+    const forwardedProto = request.headers.get("x-forwarded-proto");
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+    const proto = forwardedProto ?? (isLocal ? "http" : "https");
+    return `${proto}://${host}`;
+  }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
   return new URL(request.url).origin;
 }
