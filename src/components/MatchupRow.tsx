@@ -8,11 +8,16 @@ import type { MatchupView } from "@/lib/view";
 export function MatchupRow({
   matchup,
   showTally,
+  eligibleVoters,
 }: {
   matchup: MatchupView;
   showTally?: boolean;
+  /** When given, the row reports turnout as "3 of 5 voted". */
+  eligibleVoters?: number;
 }) {
   const { candidateA, candidateB, winnerId, status } = matchup;
+  const showTurnout =
+    showTally && matchup.votesCast !== null && (eligibleVoters ?? 0) > 0;
 
   return (
     <div className="rounded-lg border border-line bg-ink/50">
@@ -33,9 +38,14 @@ export function MatchupRow({
         isBye={matchup.isBye}
       />
       {matchup.decidedByFlip ? <FlipNote matchup={matchup} /> : null}
-      {status === "OPEN" ? (
-        <div className="border-t border-line px-3 py-1.5">
-          <Badge tone="live">Voting open</Badge>
+      {status === "OPEN" || showTurnout ? (
+        <div className="flex items-center gap-2 border-t border-line px-3 py-1.5">
+          {status === "OPEN" ? <Badge tone="live">Voting open</Badge> : null}
+          {showTurnout ? (
+            <span className="ml-auto text-xs tabular-nums text-white/45">
+              {matchup.votesCast} of {eligibleVoters} voted
+            </span>
+          ) : null}
         </div>
       ) : null}
     </div>

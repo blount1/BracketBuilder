@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge, Card, PageHeader, SeedChip } from "@/components/ui";
+import { CandidateEditor } from "@/components/CandidateEditor";
 import { MatchupRow } from "@/components/MatchupRow";
-import type { BracketView, CandidateView } from "@/lib/view";
+import type { BracketView, CandidateView, TurnoutView } from "@/lib/view";
 
 interface Invite {
   id: string;
@@ -17,9 +18,11 @@ interface Invite {
 export function AdminConsole({
   bracket,
   hasApiKey,
+  turnout,
 }: {
   bracket: BracketView;
   hasApiKey: boolean;
+  turnout: TurnoutView | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -138,6 +141,7 @@ export function AdminConsole({
           busy={busy}
           onResearch={research}
           onStart={start}
+          onSaved={() => router.refresh()}
         />
       ) : null}
 
@@ -157,6 +161,9 @@ export function AdminConsole({
                       bracket.voterCount
                     } invited voter${bracket.voterCount === 1 ? "" : "s"}`}
               </p>
+              {turnout && bracket.status === "ACTIVE" ? (
+                <Turnout turnout={turnout} />
+              ) : null}
             </div>
             {bracket.status === "ACTIVE" ? (
               <button
@@ -195,12 +202,66 @@ export function AdminConsole({
           </h2>
           <div className="space-y-2">
             {currentRound.matchups.map((matchup) => (
-              <MatchupRow key={matchup.id} matchup={matchup} showTally />
+              <MatchupRow
+                key={matchup.id}
+                matchup={matchup}
+                showTally
+                eligibleVoters={bracket.voterCount}
+              />
             ))}
           </div>
         </Card>
       ) : null}
     </main>
+  );
+}
+
+/**
+ * Round turnout: how many invited voters have finished every matchup, so the
+ * admin knows whether closing now would cut anyone off.
+ */
+function Turnout({ turnout }: { turnout: TurnoutView }) {
+  if (turnout.eligible === 0) {
+    return (
+      <p className="mt-3 text-sm text-amber-200/80">
+        No voters invited yet — create some links below, or closing the round
+        will decide every matchup by coin flip.
+      </p>
+    );
+  }
+  if (turnout.votable === 0) return null;
+
+  const { completed, eligible, started } = turnout;
+  const yetToStart = eligible - started;
+  const partway = started - completed;
+  const pct = Math.round((completed / eligible) * 100);
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-3">
+        <div className="h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
+          <div
+            className={`h-full transition-all ${
+              completed === eligible ? "bg-emerald-400" : "bg-accent"
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="text-sm font-medium tabular-nums">
+          {completed} of {eligible} voted
+        </p>
+      </div>
+      <p className="mt-1.5 text-xs text-white/40">
+        {completed === eligible
+          ? "Everyone's ballot is in — safe to close."
+          : [
+              partway > 0 ? `${partway} partway through` : null,
+              yetToStart > 0 ? `${yetToStart} not started` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+      </p>
+    </div>
   );
 }
 
@@ -210,12 +271,14 @@ function DraftStage({
   busy,
   onResearch,
   onStart,
+  onSaved,
 }: {
   bracket: BracketView;
   hasApiKey: boolean;
   busy: string | null;
   onResearch: () => void;
   onStart: () => void;
+  onSaved: () => void;
 }) {
   const ready = bracket.candidates.length > bracket.size / 2;
   return (
@@ -224,9 +287,9 @@ function DraftStage({
         <div>
           <h2 className="text-lg font-semibold">Seed the field</h2>
           <p className="mt-1 max-w-xl text-sm text-white/55">
-            Claude researches “{bracket.category}”, ranks the contenders by how
-            likely they are to win a popular vote, and seeds them so the favorites
-            open against the weakest of the field.
+            Have Claude research “{bracket.category}” and rank the contenders, or
+            type your own list below. Either way the order is the seeding, so the
+            favorites open against the weakest of the field.
           </p>
         </div>
         <div className="flex gap-2">
@@ -253,8 +316,9 @@ function DraftStage({
 
       {!hasApiKey ? (
         <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-          Set <code className="font-mono">ANTHROPIC_API_KEY</code> in your
-          environment to research candidates automatically.
+          No <code className="font-mono">ANTHROPIC_API_KEY</code> is set, so
+          automatic research is off — enter the field by hand below. Add the key
+          later to turn research on.
         </p>
       ) : null}
 
@@ -274,11 +338,14 @@ function DraftStage({
             ))}
           </ol>
         </>
-      ) : (
-        <p className="mt-5 rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-white/40">
-          No candidates yet. Run the research to fill the bracket.
-        </p>
-      )}
+      ) : null}
+
+      <CandidateEditor
+        bracketId={bracket.id}
+        size={bracket.size}
+        initial={bracket.candidates}
+        onSaved={onSaved}
+      />
     </Card>
   );
 }

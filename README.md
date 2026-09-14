@@ -30,6 +30,11 @@ Voters can change a pick while the round is open.
 Running tallies are hidden from voters while a round is open — nobody votes with
 the scoreboard in view — and become public once a matchup is decided.
 
+The admin console shows turnout for the round in progress ("3 of 5 voted", plus
+how many are partway through or haven't started) and per matchup, so you can see
+whether closing now would cut anyone off. Turnout says how many ballots are in,
+never which way they went, but it's gated to the admin alongside the tallies.
+
 **Tie-breaks.** A tie (including a matchup nobody voted in) is broken by a coin
 flip, using a commit-reveal scheme rather than a `Math.random()` at close time:
 
@@ -70,7 +75,7 @@ through researching candidates, inviting voters, and running the rounds.
 | `DATABASE_URL` | yes | Postgres connection string. |
 | `ANTHROPIC_API_KEY` | for research | Used to research and seed candidates. Without it you can still enter candidates by hand. |
 | `RESEARCH_WEB_SEARCH` | no | `false` skips live web search and relies on the model's own knowledge — cheaper and faster, less current. Defaults to on. |
-| `NEXT_PUBLIC_APP_URL` | no | Public origin used to build shareable invite links. Falls back to the request origin. |
+| `APP_URL` | no | Forces the origin used in invite links. Leave unset on a normal deploy — the app reads the real host from the request. |
 
 Research uses `claude-opus-5` in two stages: a web-search pass that gathers
 evidence about the category, then a schema-constrained pass that turns those
