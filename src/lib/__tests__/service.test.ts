@@ -3,6 +3,7 @@ import { roundCount, seedOrder } from "../bracket";
 import { flipWinner, verifyFlip } from "../coinflip";
 import { prisma } from "../prisma";
 import { buildBracket, castVote, closeRound, ServiceError } from "../service";
+import { loadTurnout } from "../view";
 import { newToken } from "../tokens";
 
 /**
@@ -291,4 +292,103 @@ describe("larger brackets", () => {
     }
     expect(await seedOf(champion!)).toBe(1);
   }, 60_000);
+});
+
+describe("turnout", () => {
+  it("counts a voter only once every matchup in the round is voted", async () => {
+    const bracket = await makeBracket(16);
+    await buildBracket(bracket.id);
+    const voters = await makeVoters(bracket.id, 5);
+
+    const open = await prisma.matchup.findMany({
+      where: { bracketId: bracket.id, round: 1, status: "OPEN" },
+      orderBy: { slot: "asc" },
+    });
+    expect(open).toHaveLength(8);
+
+    // Voter 1 finishes the whole round.
+    for (const m of open) {
+      await castVote(bracket.id, voters[0].id, m.id, m.candidateAId!);
+    }
+    // Voter 2 does all but one.
+    for (const m of open.slice(0, 7)) {
+      await castVote(bracket.id, voters[1].id, m.id, m.candidateAId!);
+    }
+    // Voter 3 votes once. Voters 4 and 5 don't show up.
+    await castVote(bracket.id, voters[2].id, open[0].id, open[0].candidateAId!);
+
+    const turnout = await loadTurnout(bracket.id, 1);
+    expect(turnout).toEqual({ eligible: 5, votable: 8, completed: 1, started: 3 });
+  });
+
+  it("excludes byes from what a voter has to turn out for", async () => {
+    // 12 candidates in a 16 bracket: 4 byes, 4 real matchups.
+    const bracket = await makeBracket(16, 12);
+    await buildBracket(bracket.id);
+    const [voter] = await makeVoters(bracket.id, 1);
+
+    const open = await prisma.matchup.findMany({
+      where: { bracketId: bracket.id, round: 1, status: "OPEN" },
+    });
+    expect(open).toHaveLength(4);
+    for (const m of open) {
+      await castVote(bracket.id, voter.id, m.id, m.candidateAId!);
+    }
+
+    // Voting the 4 real matchups is a complete ballot; the 4 byes don't count
+    // against turnout.
+    const turnout = await loadTurnout(bracket.id, 1);
+    expect(turnout).toEqual({ eligible: 1, votable: 4, completed: 1, started: 1 });
+  });
+
+  it("reports nobody voted when nobody voted", async () => {
+    const bracket = await makeBracket(16);
+    await buildBracket(bracket.id);
+    await makeVoters(bracket.id, 3);
+    expect(await loadTurnout(bracket.id, 1)).toEqual({
+      eligible: 3,
+      votable: 8,
+      completed: 0,
+      started: 0,
+    });
+  });
+
+  it("handles a bracket with no voters invited", async () => {
+    const bracket = await makeBracket(16);
+    await buildBracket(bracket.id);
+    expect(await loadTurnout(bracket.id, 1)).toEqual({
+      eligible: 0,
+      votable: 8,
+      completed: 0,
+      started: 0,
+    });
+  });
+
+  it("still reports turnout after the round is closed", async () => {
+    const bracket = await makeBracket(16);
+    await buildBracket(bracket.id);
+    const voters = await makeVoters(bracket.id, 2);
+    await voteChalk(bracket.id, 1, [voters[0].id]);
+    await closeRound(bracket.id, 1);
+
+    // The round's matchups are DECIDED now, but the record of who turned out
+    // should survive for the admin to look back at.
+    const turnout = await loadTurnout(bracket.id, 1);
+    expect(turnout).toEqual({ eligible: 2, votable: 8, completed: 1, started: 1 });
+  });
+
+  it("counts a changed vote once, not twice", async () => {
+    const bracket = await makeBracket(16);
+    await buildBracket(bracket.id);
+    const [voter] = await makeVoters(bracket.id, 1);
+    const m = await prisma.matchup.findFirstOrThrow({
+      where: { bracketId: bracket.id, round: 1, slot: 0 },
+    });
+    await castVote(bracket.id, voter.id, m.id, m.candidateAId!);
+    await castVote(bracket.id, voter.id, m.id, m.candidateBId!);
+
+    const turnout = await loadTurnout(bracket.id, 1);
+    expect(turnout.started).toBe(1);
+    expect(turnout.completed).toBe(0); // 1 of 8 matchups is not a finished ballot
+  });
 });

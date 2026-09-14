@@ -34,6 +34,8 @@ export interface MatchupView {
   flipCommit: string;
   votesA: number | null;
   votesB: number | null;
+  /** Total ballots cast in this matchup. Gated like the tallies for now. */
+  votesCast: number | null;
   isBye: boolean;
 }
 
@@ -104,6 +106,9 @@ export async function loadBracket(
       flipCommit: m.flipCommit,
       votesA: showTally ? countFor(m.id, m.candidateAId) : null,
       votesB: showTally ? countFor(m.id, m.candidateBId) : null,
+      votesCast: showTally
+        ? countFor(m.id, m.candidateAId) + countFor(m.id, m.candidateBId)
+        : null,
       isBye,
     };
   });
@@ -140,6 +145,62 @@ export async function loadBracket(
 /** The side a revealed flip chose, for the verification panel. */
 export function revealedFlipSide(seed: string | null): "A" | "B" | null {
   return seed ? flipWinner(seed) : null;
+}
+
+export interface TurnoutView {
+  /** Invited voters - the denominator in "4 of 5 voted". */
+  eligible: number;
+  /** Matchups in this round that accept votes (byes don't). */
+  votable: number;
+  /** Voters who have voted in every votable matchup. */
+  completed: number;
+  /** Voters who have voted in at least one. */
+  started: number;
+}
+
+/**
+ * How much of the electorate has weighed in on a round.
+ *
+ * This is turnout, not a tally - it says how many ballots are in, never which
+ * way they went - but it's gated to the admin alongside the tallies for now.
+ */
+export async function loadTurnout(
+  bracketId: string,
+  round: number,
+): Promise<TurnoutView> {
+  const eligible = await prisma.voter.count({ where: { bracketId } });
+
+  // A bye has only one side and is decided without a vote, so it isn't
+  // something a voter can fail to turn out for.
+  const votable = await prisma.matchup.findMany({
+    where: {
+      bracketId,
+      round,
+      status: { in: ["OPEN", "DECIDED"] },
+      candidateAId: { not: null },
+      candidateBId: { not: null },
+    },
+    select: { id: true },
+  });
+
+  if (votable.length === 0) {
+    return { eligible, votable: 0, completed: 0, started: 0 };
+  }
+
+  const perVoter = await prisma.vote.groupBy({
+    by: ["voterId"],
+    where: { matchupId: { in: votable.map((m) => m.id) } },
+    _count: { _all: true },
+  });
+
+  return {
+    eligible,
+    votable: votable.length,
+    // The unique index on (matchupId, voterId) means a voter's vote count is
+    // exactly the number of distinct matchups they've weighed in on.
+    completed: perVoter.filter((v) => v._count._all >= votable.length).length,
+    started: perVoter.length,
+  };
 }
 
 /** Open matchups a given voter can still act on, with their current pick. */

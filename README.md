@@ -30,6 +30,11 @@ Voters can change a pick while the round is open.
 Running tallies are hidden from voters while a round is open — nobody votes with
 the scoreboard in view — and become public once a matchup is decided.
 
+The admin console shows turnout for the round in progress ("3 of 5 voted", plus
+how many are partway through or haven't started) and per matchup, so you can see
+whether closing now would cut anyone off. Turnout says how many ballots are in,
+never which way they went, but it's gated to the admin alongside the tallies.
+
 **Tie-breaks.** A tie (including a matchup nobody voted in) is broken by a coin
 flip, using a commit-reveal scheme rather than a `Math.random()` at close time:
 

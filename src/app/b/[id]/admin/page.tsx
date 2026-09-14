@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminConsole } from "@/components/AdminConsole";
 import { isAdmin } from "@/lib/auth";
-import { loadBracket } from "@/lib/view";
+import { loadBracket, loadTurnout } from "@/lib/view";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -32,5 +32,7 @@ export default async function AdminPage({ params }: Params) {
   }
 
   const hasApiKey = Boolean(process.env.ANTHROPIC_API_KEY);
-  return <AdminConsole bracket={bracket} hasApiKey={hasApiKey} />;
+  const turnout =
+    bracket.status === "ACTIVE" ? await loadTurnout(id, bracket.currentRound) : null;
+  return <AdminConsole bracket={bracket} hasApiKey={hasApiKey} turnout={turnout} />;
 }

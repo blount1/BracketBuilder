@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge, Card, PageHeader, SeedChip } from "@/components/ui";
 import { MatchupRow } from "@/components/MatchupRow";
-import type { BracketView, CandidateView } from "@/lib/view";
+import type { BracketView, CandidateView, TurnoutView } from "@/lib/view";
 
 interface Invite {
   id: string;
@@ -17,9 +17,11 @@ interface Invite {
 export function AdminConsole({
   bracket,
   hasApiKey,
+  turnout,
 }: {
   bracket: BracketView;
   hasApiKey: boolean;
+  turnout: TurnoutView | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -157,6 +159,9 @@ export function AdminConsole({
                       bracket.voterCount
                     } invited voter${bracket.voterCount === 1 ? "" : "s"}`}
               </p>
+              {turnout && bracket.status === "ACTIVE" ? (
+                <Turnout turnout={turnout} />
+              ) : null}
             </div>
             {bracket.status === "ACTIVE" ? (
               <button
@@ -195,12 +200,66 @@ export function AdminConsole({
           </h2>
           <div className="space-y-2">
             {currentRound.matchups.map((matchup) => (
-              <MatchupRow key={matchup.id} matchup={matchup} showTally />
+              <MatchupRow
+                key={matchup.id}
+                matchup={matchup}
+                showTally
+                eligibleVoters={bracket.voterCount}
+              />
             ))}
           </div>
         </Card>
       ) : null}
     </main>
+  );
+}
+
+/**
+ * Round turnout: how many invited voters have finished every matchup, so the
+ * admin knows whether closing now would cut anyone off.
+ */
+function Turnout({ turnout }: { turnout: TurnoutView }) {
+  if (turnout.eligible === 0) {
+    return (
+      <p className="mt-3 text-sm text-amber-200/80">
+        No voters invited yet — create some links below, or closing the round
+        will decide every matchup by coin flip.
+      </p>
+    );
+  }
+  if (turnout.votable === 0) return null;
+
+  const { completed, eligible, started } = turnout;
+  const yetToStart = eligible - started;
+  const partway = started - completed;
+  const pct = Math.round((completed / eligible) * 100);
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-3">
+        <div className="h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
+          <div
+            className={`h-full transition-all ${
+              completed === eligible ? "bg-emerald-400" : "bg-accent"
+            }`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+        <p className="text-sm font-medium tabular-nums">
+          {completed} of {eligible} voted
+        </p>
+      </div>
+      <p className="mt-1.5 text-xs text-white/40">
+        {completed === eligible
+          ? "Everyone's ballot is in — safe to close."
+          : [
+              partway > 0 ? `${partway} partway through` : null,
+              yetToStart > 0 ? `${yetToStart} not started` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+      </p>
+    </div>
   );
 }
 
