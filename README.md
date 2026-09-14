@@ -75,7 +75,7 @@ through researching candidates, inviting voters, and running the rounds.
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Postgres connection string. `POSTGRES_URL` and `STORAGE_URL` are also accepted, since hosting platforms name these differently — a Vercel storage integration uses its configured prefix. For schema changes the app prefers a direct (unpooled) URL when one is published: `DIRECT_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_URL_NON_POOLING` or `STORAGE_URL_UNPOOLED`. |
+| `DATABASE_URL` | yes | Postgres connection string. `POSTGRES_URL` and `STORAGE_URL` work too, as does any **prefixed** variant — a Vercel storage integration publishes e.g. `myproject_DATABASE_URL`, and that is found automatically. For schema changes a direct (unpooled) URL is preferred when published: `DIRECT_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_URL_NON_POOLING` or `STORAGE_URL_UNPOOLED`, prefixed or not. Only values that look like Postgres URLs are considered. |
 | `ANTHROPIC_API_KEY` | for research | Used to research and seed candidates. Without it you can still enter candidates by hand. |
 | `RESEARCH_WEB_SEARCH` | no | `true` researches with live web search. Off by default — see below. |
 | `APP_URL` | no | Forces the origin used in invite links. Leave unset on a normal deploy — the app reads the real host from the request. |
